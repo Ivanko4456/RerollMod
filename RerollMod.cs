@@ -344,53 +344,41 @@ public class RerollMod : MewgenicsMod
         log(Name + " disabled");
     }
 
+    private void RollCat(GameChar cat)
+    {
+        cat.Spell1 = RandomSpell(cat.ClassName.ToLower());
+        cat.Passive0 = RandomPassive(cat.ClassName.ToLower());
+
+        if (rolledCats.Contains(cat))
+        {
+            cat.Name = Convert.ToString(Convert.ToInt32(cat.Name) + 1);
+        }
+        else
+        {
+            cat.Name = "0";
+            rolledCats.Add(cat);
+        }
+    }
     protected void OnKeyDown(KeyEventArgs e)
     {
         if (!IsEnabled) return;
         if ((e.Scancode == SDL_Scancode.P || e.Scancode == SDL_Scancode.O) && !e.IsRepeat && !inFight)
         {
             log($"🔵 [Reroll] Клавиша {e.Key} нажата! (18 = O, 19 = P)");
-            List<GameChar> cats = GameWorld.Current.GetCats();
+            List<GameChar> cats = GameWorld.Current.GetCats(); // get all alive cats
+
+            /* --- delete cats that is not in party --- */
             for (int i = 0; i < cats.Count; i++)
             {
                 if (!cats[i].IsInAdventureParty)
                     cats.RemoveAt(i);
             }
 
+            /* --- processing --- */
             if (e.Scancode == SDL_Scancode.O)
-            {
-                var cat = cats[0];
-                cat.Spell1 = RandomSpell(cat.ClassName.ToLower());
-                cat.Passive0 = RandomPassive(cat.ClassName.ToLower());
-
-                if (rolledCats.Contains(cat))
-                {
-                    cat.Name = Convert.ToString(Convert.ToInt32(cat.Name) + 1);
-                }
-                else
-                {
-                    cat.Name = "0";
-                    rolledCats.Add(cat);
-                }
-
-            }
+                RollCat(cats[0]);
             else if (e.Scancode == SDL_Scancode.P)
-            {
-                var cat = cats[1];
-                cat.Spell1 = RandomSpell(cat.ClassName.ToLower());
-                cat.Passive0 = RandomPassive(cat.ClassName.ToLower());
-
-                if (rolledCats.Contains(cat))
-                {
-                    cat.Name = Convert.ToString(Convert.ToInt32(cat.Name) + 1);
-                }
-                else
-                {
-                    cat.Name = "0";
-                    rolledCats.Add(cat);
-                }
-
-            }
+                RollCat(cats[1]);
 
         }
     }
