@@ -28,8 +28,6 @@ public class RerollMod : MewgenicsMod
     private bool inFight = false;
     private Random random = new Random();
 
-    private List<GameChar> rolledCats = new List<GameChar>();
-
     Dictionary<string, List<string>> abilities = new Dictionary<string, List<string>>();
     Dictionary<string, List<string>> passives = new Dictionary<string, List<string>>();
 
@@ -324,7 +322,6 @@ public class RerollMod : MewgenicsMod
         if (!IsEnabled) return;
         log("adventure return triggered");
         inFight = false;
-        rolledCats = new List<GameChar>();
     }
 
     private void OnAdventureStart(AdventureStartEvent @event)
@@ -346,17 +343,29 @@ public class RerollMod : MewgenicsMod
 
     private void RollCat(GameChar cat)
     {
-        cat.Spell1 = RandomSpell(cat.ClassName.ToLower());
-        cat.Passive0 = RandomPassive(cat.ClassName.ToLower());
 
-        if (rolledCats.Contains(cat))
+        string sp = cat.Spell1;
+        string pa = cat.Passive0;
+
+        string sp_n = RandomSpell(cat.ClassName.ToLower());
+        string pa_n = RandomPassive(cat.ClassName.ToLower());
+
+        /* --- avoiding repetitions  --- */
+        while (sp == sp_n)
+            sp_n = RandomSpell(cat.ClassName.ToLower());
+        while (pa == pa_n)
+            pa_n = RandomPassive(cat.ClassName.ToLower());
+
+        cat.Spell1 = sp_n;
+        cat.Passive0 = pa_n;
+
+        if (cat.Name.All(char.IsDigit))
         {
             cat.Name = Convert.ToString(Convert.ToInt32(cat.Name) + 1);
         }
         else
         {
             cat.Name = "0";
-            rolledCats.Add(cat);
         }
     }
     protected void OnKeyDown(KeyEventArgs e)
@@ -364,7 +373,7 @@ public class RerollMod : MewgenicsMod
         if (!IsEnabled) return;
         if ((e.Scancode == SDL_Scancode.P || e.Scancode == SDL_Scancode.O) && !e.IsRepeat && !inFight)
         {
-            log($"🔵 [Reroll] Клавиша {e.Key} нажата! (18 = O, 19 = P)");
+            log($"🔵 [Reroll] Клавиша {e.Key} нажата! (111 = O, 112 = P)");
             List<GameChar> cats = GameWorld.Current.GetCats(); // get all alive cats
 
             /* --- delete cats that is not in party --- */
