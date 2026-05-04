@@ -3,13 +3,52 @@ using MewgenicsModSdk.Api;
 using MewgenicsModSdk.Game;
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
+using System.Formats.Asn1;
 using System.Linq;
-
+using System.Net;
+using System.Net.Http;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.Json;
 
 namespace RerollMod;
 
+class Server(string ip)
+{
 
+    private readonly HttpClient client = new HttpClient
+    {
+        BaseAddress = new Uri(ip)
+    };
+
+    private string CreateCatStateCall(int id, long catId, string className,
+    string spell0, string spell1, string spell2, string spell3,
+    string passive0, string passive1, string disorder0, string disorder1)
+    {
+        string ToJsonValue(string value) => string.IsNullOrEmpty(value) ? "null" : $"\"{value}\"";
+
+        string call = $"{{\"id\":\"string placeholder\",\"catId\":\"{catId}\",\"className\":\"{className}\"," +
+            $"\"abilities\":[{{\"id\":1,\"name\":{ToJsonValue(spell0)}}},{{\"id\":2,\"name\":{ToJsonValue(spell1)}}}," +
+            $"{{\"id\":3,\"name\":{ToJsonValue(spell2)}}},{{\"id\":4,\"name\":{ToJsonValue(spell3)}}}]," +
+            $"\"passives\":[{{\"id\":1,\"name\":{ToJsonValue(passive0)}}},{{\"id\":2,\"name\":{ToJsonValue(passive1)}}}]," +
+            $"\"disorders\":[{{\"id\":1,\"name\":{ToJsonValue(disorder0)}}},{{\"id\":2,\"name\":{ToJsonValue(disorder1)}}}]}}";
+
+        return call;
+    }
+
+    public string CreateCatState(int id, GameChar cat)
+    {
+        return CreateCatStateCall(id, cat.CatId, cat.ClassName, cat.Spell0, cat.Spell1, cat.Spell2, cat.Spell3,
+            cat.Passive0, cat.Passive1, cat.Disorder0, cat.Disorder1);
+    }
+
+    public void UpdateCat(string json)
+    {
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var task = client.PostAsync("api/cat/update", content);
+    }
+
+}
 public class RerollMod : MewgenicsMod
 {
     public override string Id => "reroll_mod";
@@ -19,18 +58,16 @@ public class RerollMod : MewgenicsMod
     public override string Category => "Gameplay";
 
     bool logging = true;
+    public void log(string message) { if (logging) Log(message); }
 
-    void log(string message)
-    {
-        if (logging) Log(message);
-    }
-
-    //private bool inFight = false;
     private Random random = new Random();
 
     Dictionary<string, List<string>> abilities = new Dictionary<string, List<string>>();
     Dictionary<string, List<string>> passives = new Dictionary<string, List<string>>();
 
+    int timer = 0;
+    Server server = new Server("http://82.23.248.193:5000");
+    int playerId = 1;
 
     private void loadGon()
     {
@@ -287,21 +324,22 @@ public class RerollMod : MewgenicsMod
             "EnergyFists", "UnburdenedMotion", "UnburdenedStrikes", "UnburdenedThoughts",
             "RunningJab", "PerfectTechnique", "RapidFlow", "CounterBarrage", "FlowState", "DancingLights"
         ];
-
     }
+
     private string RandomSpell(string catClass)
     {
         log("RandomSpell triggered");
         log($"CatClass: {catClass}");
-        string abil = abilities[catClass][random.Next(abilities[catClass].Capacity)];
+        string abil = abilities[catClass][random.Next(abilities[catClass].Count)];
         log(abil);
         return abil;
     }
+
     private string RandomPassive(string catClass)
     {
         log("RandomPassive triggered");
         log($"CatClass: {catClass}");
-        string passive = passives[catClass][random.Next(passives[catClass].Capacity)];
+        string passive = passives[catClass][random.Next(passives[catClass].Count)];
         log(passive);
         return passive;
     }
@@ -314,27 +352,40 @@ public class RerollMod : MewgenicsMod
         GameEvents.OnKeyDown += OnKeyDown;
         GameEvents.OnAdventureStart += OnAdventureStart;
         GameEvents.OnAdventureReturn += OnAdventureReturn;
+        GameEvents.OnClassLocked += OnClassLocked;
     }
 
+    private void OnClassLocked(ClassLockedEvent @event)
+    {
+        if (!IsEnabled) return;
+        log("OnClassLocked");
+    }
 
     private void OnAdventureReturn(AdventureReturnEvent @event)
     {
         if (!IsEnabled) return;
         log("adventure return triggered");
-        //inFight = false;
     }
 
     private void OnAdventureStart(AdventureStartEvent @event)
     {
         if (!IsEnabled) return;
         log("adventure start triggered");
-        //inFight = true;
+
+        List<GameChar> cats = GameWorld.Current.GetCats();
+        for (int i = 0; i < cats.Count; i++)
+            if (!cats[i].IsInAdventureParty) cats.RemoveAt(i);
+        for (int i = 0; i < cats.Count; i++)
+        {
+            string call = server.CreateCatState(playerId, cats[i]);
+            log(call);
+            server.UpdateCat(call);
+        }
+
+
     }
 
-    protected override void OnEnable()
-    {
-        log(Name + " enabled");
-    }
+    protected override void OnEnable() { log(Name + " enabled"); }
     protected override void OnDisable()
     {
         GameEvents.OnKeyDown -= OnKeyDown;
@@ -343,78 +394,82 @@ public class RerollMod : MewgenicsMod
 
     private void RollCat(GameChar cat)
     {
-
         string sp = cat.Spell1;
         string pa = cat.Passive0;
 
         string sp_n = RandomSpell(cat.ClassName.ToLower());
         string pa_n = RandomPassive(cat.ClassName.ToLower());
 
-        /* --- avoiding repetitions  --- */
-        while (sp == sp_n)
-            sp_n = RandomSpell(cat.ClassName.ToLower());
-        while (pa == pa_n)
-            pa_n = RandomPassive(cat.ClassName.ToLower());
+        while (sp == sp_n) sp_n = RandomSpell(cat.ClassName.ToLower());
+        while (pa == pa_n) pa_n = RandomPassive(cat.ClassName.ToLower());
 
         cat.Spell1 = sp_n;
         cat.Passive0 = pa_n;
 
+        string call = server.CreateCatState(playerId, cat);
+        log(call);
+        server.UpdateCat(call);
+
         if (cat.Name.All(char.IsDigit))
-        {
             cat.Name = Convert.ToString(Convert.ToInt32(cat.Name) + 1);
-        }
         else
-        {
             cat.Name = "0";
-        }
     }
+
     protected void OnKeyDown(KeyEventArgs e)
     {
         if (!IsEnabled) return;
         if ((e.Scancode == SDL_Scancode.P || e.Scancode == SDL_Scancode.O) && !e.IsRepeat)
         {
-            log($"🔵 [Reroll] Клавиша {e.Key} нажата! (111 = O, 112 = P)");
-            List<GameChar> cats = GameWorld.Current.GetCats(); // get all alive cats
+            log($"🔵 [Reroll] Key {e.Key} pressed! (111 = O, 112 = P)");
+            List<GameChar> cats = GameWorld.Current.GetCats();
 
-            /* --- delete cats that is not in party --- */
             for (int i = 0; i < cats.Count; i++)
-            {
-                if (!cats[i].IsInAdventureParty)
-                    cats.RemoveAt(i);
-            }
+                if (!cats[i].IsInAdventureParty) cats.RemoveAt(i);
 
-            /* --- processing --- */
-            if (e.Scancode == SDL_Scancode.O)
-                RollCat(cats[0]);
-            else if (e.Scancode == SDL_Scancode.P)
-                RollCat(cats[1]);
-
+            if (e.Scancode == SDL_Scancode.O) RollCat(cats[0]);
+            else if (e.Scancode == SDL_Scancode.P) RollCat(cats[1]);
         }
     }
 
     private void OnFrame(HouseUpdateEvent e)
     {
         if (!IsEnabled) return;
+        timer++;
+        if (timer > 500)
+        {
+            timer = 0;
+
+            List<GameChar> cats = GameWorld.Current.GetCats();
+            for (int i = 0; i < cats.Count; i++)
+                if (!cats[i].IsInAdventureParty) cats.RemoveAt(i);
+            for (int i = 0; i < cats.Count; i++)
+            {
+                string call = server.CreateCatState(playerId, cats[i]);
+                log(call);
+                server.UpdateCat(call);
+            }
+
+        }
     }
-}
 
+    internal static unsafe class Exports
+    {
+        private static readonly RerollMod _mod = new();
 
-internal static unsafe class Exports
-{
-    private static readonly RerollMod _mod = new();
+        [UnmanagedCallersOnly(EntryPoint = "MewMod_GetInfo")]
+        public static ModInfo* GetInfo() { try { return ModInfoHelper.GetInfo(_mod); } catch { return null; } }
 
-    [UnmanagedCallersOnly(EntryPoint = "MewMod_GetInfo")]
-    public static ModInfo* GetInfo() { try { return ModInfoHelper.GetInfo(_mod); } catch { return null; } }
+        [UnmanagedCallersOnly(EntryPoint = "MewMod_Init")]
+        public static void Init(MewgenicsApi* api) { try { _mod.InternalLoad(api); } catch { } }
 
-    [UnmanagedCallersOnly(EntryPoint = "MewMod_Init")]
-    public static void Init(MewgenicsApi* api) { try { _mod.InternalLoad(api); } catch { } }
+        [UnmanagedCallersOnly(EntryPoint = "MewMod_Enable")]
+        public static void Enable() { try { _mod.InternalEnable(); } catch { } }
 
-    [UnmanagedCallersOnly(EntryPoint = "MewMod_Enable")]
-    public static void Enable() { try { _mod.InternalEnable(); } catch { } }
+        [UnmanagedCallersOnly(EntryPoint = "MewMod_Disable")]
+        public static void Disable() { try { _mod.InternalDisable(); } catch { } }
 
-    [UnmanagedCallersOnly(EntryPoint = "MewMod_Disable")]
-    public static void Disable() { try { _mod.InternalDisable(); } catch { } }
-
-    [UnmanagedCallersOnly(EntryPoint = "MewMod_ConfigReload")]
-    public static void ConfigReload() { try { _mod.InternalConfigReload(); } catch { } }
+        [UnmanagedCallersOnly(EntryPoint = "MewMod_ConfigReload")]
+        public static void ConfigReload() { try { _mod.InternalConfigReload(); } catch { } }
+    }
 }
