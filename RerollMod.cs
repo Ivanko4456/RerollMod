@@ -27,7 +27,7 @@ class Server(string ip)
     {
         string ToJsonValue(string value) => string.IsNullOrEmpty(value) ? "null" : $"\"{value}\"";
 
-        string call = $"{{\"id\":\"string placeholder\",\"catId\":\"{catId}\",\"className\":\"{className}\"," +
+        string call = $"{{\"id\":\"{id}\",\"catId\":\"{catId}\",\"className\":\"{className}\"," +
             $"\"abilities\":[{{\"id\":1,\"name\":{ToJsonValue(spell0)}}},{{\"id\":2,\"name\":{ToJsonValue(spell1)}}}," +
             $"{{\"id\":3,\"name\":{ToJsonValue(spell2)}}},{{\"id\":4,\"name\":{ToJsonValue(spell3)}}}]," +
             $"\"passives\":[{{\"id\":1,\"name\":{ToJsonValue(passive0)}}},{{\"id\":2,\"name\":{ToJsonValue(passive1)}}}]," +
@@ -353,6 +353,7 @@ public class RerollMod : MewgenicsMod
         GameEvents.OnAdventureStart += OnAdventureStart;
         GameEvents.OnAdventureReturn += OnAdventureReturn;
         GameEvents.OnClassLocked += OnClassLocked;
+        Config.GetInt("playerId", random.Next(1000000));
     }
 
     private void OnClassLocked(ClassLockedEvent @event)
@@ -377,7 +378,7 @@ public class RerollMod : MewgenicsMod
             if (!cats[i].IsInAdventureParty) cats.RemoveAt(i);
         for (int i = 0; i < cats.Count; i++)
         {
-            string call = server.CreateCatState(playerId, cats[i]);
+            string call = server.CreateCatState(Config.GetInt("playerId"), cats[i]);
             log(call);
             server.UpdateCat(call);
         }
@@ -388,7 +389,6 @@ public class RerollMod : MewgenicsMod
     protected override void OnEnable() { log(Name + " enabled"); }
     protected override void OnDisable()
     {
-        GameEvents.OnKeyDown -= OnKeyDown;
         log(Name + " disabled");
     }
 
@@ -406,7 +406,7 @@ public class RerollMod : MewgenicsMod
         cat.Spell1 = sp_n;
         cat.Passive0 = pa_n;
 
-        string call = server.CreateCatState(playerId, cat);
+        string call = server.CreateCatState(Config.GetInt("playerId"), cat);
         log(call);
         server.UpdateCat(call);
 
@@ -423,7 +423,7 @@ public class RerollMod : MewgenicsMod
         {
             log($"🔵 [Reroll] Key {e.Key} pressed! (111 = O, 112 = P)");
             List<GameChar> cats = GameWorld.Current.GetCats();
-
+  
             for (int i = 0; i < cats.Count; i++)
                 if (!cats[i].IsInAdventureParty) cats.RemoveAt(i);
 
@@ -435,22 +435,22 @@ public class RerollMod : MewgenicsMod
     private void OnFrame(HouseUpdateEvent e)
     {
         if (!IsEnabled) return;
-        timer++;
-        if (timer > 500)
-        {
-            timer = 0;
+        //timer++;
+        //if (timer > 500)
+        //{
+        //    timer = 0;
 
-            List<GameChar> cats = GameWorld.Current.GetCats();
-            for (int i = 0; i < cats.Count; i++)
-                if (!cats[i].IsInAdventureParty) cats.RemoveAt(i);
-            for (int i = 0; i < cats.Count; i++)
-            {
-                string call = server.CreateCatState(playerId, cats[i]);
-                log(call);
-                server.UpdateCat(call);
-            }
+        //    List<GameChar> cats = GameWorld.Current.GetCats();
+        //    for (int i = 0; i < cats.Count; i++)
+        //        if (!cats[i].IsInAdventureParty) cats.RemoveAt(i);
+        //    for (int i = 0; i < cats.Count; i++)
+        //    {
+        //        string call = server.CreateCatState(playerId, cats[i]);
+        //        log(call);
+        //        server.UpdateCat(call);
+        //    }
 
-        }
+        //}
     }
 
     internal static unsafe class Exports
